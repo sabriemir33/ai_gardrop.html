@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>EYE TRACK // Professional Gaze System</title>
+<script src="https://cdn.jsdelivr.net/npm/webgazer@2.1.0/dist/webgazer.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+  :root {
+    --neon-red: #ff1744;
+    --neon-red-glow: rgba(255,23,68,0.6);
+    --neon-cyan: #00e5ff;
+    --neon-cyan-dim: rgba(0,229,255,0.15);
+    --dark-bg: #050a0f;
+    --grid-color: rgba(0,229,255,0.04);
+    --panel-bg: rgba(0,10,20,0.85);
+    --panel-border: rgba(0,229,255,0.2);
+    --text-primary: #e0f7fa;
+    --text-dim: rgba(224,247,250,0.4);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--dark-bg);
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow: hidden;
+    cursor: none;
+  }
+
+  /* Background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--grid-color) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Radial vignette */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.8) 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ========== HUD OVERLAY ========== */
+  #hud {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  /* Corner brackets */
+  .corner {
+    position: absolute;
+    width: 30px; height: 30px;
+    border-color: var(--neon-cyan);
+    border-style: solid;
+    opacity: 0.5;
+  }
+  .corner.tl { top: 12px; left: 12px; border-width: 2px 0 0 2px; }
+  .corner.tr { top: 12px; right: 12px; border-width: 2px 2px 0 0; }
+  .corner.bl { bottom: 12px; left: 12px; border-width: 0 0 2px 2px; }
+  .corner.br { bottom: 12px; right: 12px; border-width: 0 2px 2px 0; }
+
+  /* ========== DATA PANEL ========== */
+  #data-panel {
+    position: fixed;
+    top: 20px; left: 20px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    padding: 14px 18px;
+    z-index: 200;
+    backdrop-filter: blur(8px);
+    min-width: 220px;
+    pointer-events: none;
+  }
+
+  #data-panel::before {
+    content: 'GAZE DATA';
+    display: block;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    color: var(--neon-cyan);
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+
+  .data-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 5px 0;
+    font-size: 11px;
+  }
+
+  .data-label { color: var(--text-dim); letter-spacing: 1px; }
+
+  .data-value {
+    color: var(--neon-red);
+    font-size: 13px;
+    font-weight: bold;
+    text-shadow: 0 0 8px var(--neon-red-glow);
+    min-width: 60px;
+    text-align: right;
+  }
+
+  #status-row {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--panel-border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+
+  #status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #666;
+    transition: background 0.3s;
+    flex-shrink: 0;
+  }
+  #status-dot.active {
+    background: #00e676;
+    box-shadow: 0 0 8px rgba(0,230,118,0.8);
+    animation: blink 1.5s infinite;
+  }
+  #status-dot.calibrating {
+    background: #ffea00;
+    box-shadow: 0 0 8px rgba(255,234,0,0.8);
+    animation: blink 0.6s infinite;
+  }
+
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  #status-text { color: var(--text-dim); }
+
+  /* Calibration progress */
+  #cal-progress {
+    position: fixed;
+    top: 20px; right: 20px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    padding: 14px 18px;
+    z-index: 200;
+    backdrop-filter: blur(8px);
+    text-align: right;
+    pointer-events: none;
+  }
+
+  #cal-progress::before {
+    content: 'CALIBRATION';
+    display: block;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    color: var(--neon-cyan);
+    margin-bottom: 8px;
+  }
+
+  #cal-bar-wrap {
+    width: 140px;
+    height: 3px;
+    background: rgba(255,255,255,0.1);
+    margin-top: 8px;
+  }
+
+  #cal-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--neon-cyan), var(--neon-red));
+    width: 0%;
+    transition: width 0.4s ease;
+    box-shadow: 0 0 6px var(--neon-cyan);
+  }
+
+  #cal-count {
+    font-size: 22px;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 15px var(--neon-cyan);
+    line-height: 1;
+  }
+
+  #cal-label { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+
+  /* ========== CALIBRATION OVERLAY ========== */
+  #calibration-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #cal-intro {
+    text-align: center;
+    z-index: 310;
+    max-width: 480px;
+    padding: 40px;
+  }
+
+  #cal-intro h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(22px, 5vw, 36px);
+    font-weight: 900;
+    letter-spacing: 6px;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 30px var(--neon-cyan);
+    margin-bottom: 8px;
+  }
+
+  #cal-intro .sub {
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+    margin-bottom: 30px;
+  }
+
+  #cal-intro p {
+    font-size: 13px;
+    line-height: 1.8;
+    color: rgba(224,247,250,0.7);
+    margin-bottom: 30px;
+  }
+
+  #start-btn {
+    background: transparent;
+    border: 1px solid var(--neon-cyan);
+    color: var(--neon-cyan);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    padding: 14px 36px;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-transform: uppercase;
+  }
+
+  #start-btn:hover {
+    background: var(--neon-cyan-dim);
+    box-shadow: 0 0 20px var(--neon-cyan), inset 0 0 20px var(--neon-cyan-dim);
+  }
+
+  /* ========== CALIBRATION DOTS ========== */
+  .cal-dot {
+    position: fixed;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--neon-cyan);
+    box-shadow: 0 0 10px var(--neon-cyan), 0 0 30px rgba(0,229,255,0.4);
+    cursor: pointer;
+    transform: translate(-50%, -50%) scale(0);
+    transition: transform 0.35s cubic-bezier(0.175,0.885,0.32,1.275);
+    z-index: 400;
+    border: 2px solid rgba(255,255,255,0.6);
+  }
+
+  .cal-dot.visible { transform: translate(-50%, -50%) scale(1); }
+
+  .cal-dot::before {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 1px solid rgba(0,229,255,0.3);
+    animation: pulse-ring 1.5s infinite;
+  }
+
+  .cal-dot.clicked {
+    background: #00e676;
+    box-shadow: 0 0 15px #00e676, 0 0 40px rgba(0,230,118,0.5);
+    transform: translate(-50%, -50%) scale(0.6);
+    pointer-events: none;
+  }
+
+  @keyframes pulse-ring {
+    0% { transform: scale(1); opacity: 0.5; }
+    100% { transform: scale(2.5); opacity: 0; }
+  }
+
+  #cal-instruction {
+    position: fixed;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    padding: 12px 24px;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--neon-cyan);
+    z-index: 400;
+    backdrop-filter: blur(8px);
+    white-space: nowrap;
+    display: none;
+    text-align: center;
+  }
+
+  /* ========== GAZE DOT ========== */
+  #gaze-dot {
+    position: fixed;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--neon-red);
+    box-shadow:
+      0 0 6px 2px var(--neon-red),
+      0 0 15px 4px var(--neon-red-glow),
+      0 0 30px 8px rgba(255,23,68,0.3);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 500;
+    display: none;
+    transition: left 0.04s linear, top 0.04s linear;
+  }
+
+  #gaze-dot::after {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.9);
+  }
+
+  #gaze-dot.active { display: block; }
+
+  /* ========== WEBGAZER VIDEO ========== */
+  #webgazerVideoFeed {
+    position: fixed !important;
+    bottom: 20px !important;
+    right: 20px !important;
+    top: auto !important;
+    left: auto !important;
+    width: 140px !important;
+    height: 105px !important;
+    border: 1px solid var(--panel-border) !important;
+    border-radius: 0 !important;
+    opacity: 0.7 !important;
+    z-index: 150 !important;
+  }
+
+  #webgazerFaceOverlay, #webgazerFaceFeedbackBox {
+    display: none !important;
+  }
+
+  /* ========== COMPLETE SCREEN ========== */
+  #complete-msg {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    z-index: 500;
+    display: none;
+    pointer-events: none;
+  }
+
+  #complete-msg h2 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 28px;
+    font-weight: 900;
+    letter-spacing: 6px;
+    color: #00e676;
+    text-shadow: 0 0 30px #00e676;
+    animation: fadeOut 2.5s forwards;
+  }
+
+  @keyframes fadeOut {
+    0%,60%{opacity:1; transform: scale(1);}
+    100%{opacity:0; transform: scale(1.1);}
+  }
+
+  /* Scanline effect */
+  #scanline {
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+</style>
+</head>
+<body>
+
+<!-- Scanline -->
+<div id="scanline"></div>
+
+<!-- HUD Corners -->
+<div id="hud">
+  <div class="corner tl"></div>
+  <div class="corner tr"></div>
+  <div class="corner bl"></div>
+  <div class="corner br"></div>
+</div>
+
+<!-- Data Panel -->
+<div id="data-panel">
+  <div class="data-row">
+    <span class="data-label">X AXIS</span>
+    <span class="data-value" id="coord-x">---</span>
+  </div>
+  <div class="data-row">
+    <span class="data-label">Y AXIS</span>
+    <span class="data-value" id="coord-y">---</span>
+  </div>
+  <div class="data-row">
+    <span class="data-label">SMOOTH</span>
+    <span class="data-value" id="smooth-val" style="color:var(--neon-cyan);text-shadow:0 0 8px var(--neon-cyan)">ON</span>
+  </div>
+  <div id="status-row">
+    <div id="status-dot"></div>
+    <span id="status-text">INITIALIZING</span>
+  </div>
+</div>
+
+<!-- Calibration Progress -->
+<div id="cal-progress">
+  <span id="cal-count">0/9</span>
+  <div id="cal-label">POINTS DONE</div>
+  <div id="cal-bar-wrap"><div id="cal-bar"></div></div>
+</div>
+
+<!-- Gaze Dot -->
+<div id="gaze-dot"></div>
+
+<!-- Calibration Intro -->
+<div id="calibration-overlay">
+  <div id="cal-intro">
+    <h1>EYE TRACK</h1>
+    <div class="sub">PROFESSIONAL GAZE SYSTEM v2.1</div>
+    <p>
+      Sistem başlatıldığında ön kameranıza erişim izni istenecektir.<br>
+      Ardından ekranda beliren <strong style="color:var(--neon-cyan)">9 nokta</strong>ya sırayla tıklayın.<br>
+      Her noktaya bakarken tıklayın — bakışlarınızı kalibre eder.
+    </p>
+    <button id="start-btn" onclick="startSystem()">// BAŞLAT</button>
+  </div>
+</div>
+
+<!-- Calibration instruction bar -->
+<div id="cal-instruction">NOKTAYA BAKARAK TIKLAYIN</div>
+
+<!-- Complete message -->
+<div id="complete-msg"><h2>KALİBRASYON TAMAMLANDI</h2></div>
+
+<script>
+// =========================================
+//  STATE
+// =========================================
+const TOTAL_POINTS = 9;
+let clickedPoints = 0;
+let isCalibrated = false;
+let gazeX = 0, gazeY = 0;
+let smoothX = window.innerWidth / 2;
+let smoothY = window.innerHeight / 2;
+const ALPHA = 0.22; // smoothing factor (lower = smoother)
+
+const gazeDot    = document.getElementById('gaze-dot');
+const coordX     = document.getElementById('coord-x');
+const coordY     = document.getElementById('coord-y');
+const statusDot  = document.getElementById('status-dot');
+const statusText = document.getElementById('status-text');
+const calCount   = document.getElementById('cal-count');
+const calBar     = document.getElementById('cal-bar');
+const calInstr   = document.getElementById('cal-instruction');
+
+// =========================================
+//  CALIBRATION POINT POSITIONS (3x3 grid)
+// =========================================
+function getCalPoints() {
+  const W = window.innerWidth, H = window.innerHeight;
+  const px = [0.08, 0.5, 0.92];
+  const py = [0.1, 0.5, 0.90];
+  const pts = [];
+  py.forEach(y => px.forEach(x => pts.push([W*x, H*y])));
+  return pts;
+}
+
+let calPoints = [];
+let calDots   = [];
+let currentDotIndex = 0;
+
+// =========================================
+//  START SYSTEM
+// =========================================
+async function startSystem() {
+  document.getElementById('cal-intro').style.display = 'none';
+
+  setStatus('calibrating', 'KAMERA ERİŞİMİ');
+
+  try {
+    webgazer.setRegression('ridge')
+      .setTracker('TFFacemesh')
+      .setGazeListener(onGaze)
+      .saveDataAcrossSessions(false)
+      .showVideoPreview(true)
+      .showPredictionPoints(false);
+
+    await webgazer.begin();
+
+    // Hide default webgazer elements
+    const vid = document.getElementById('webgazerVideoFeed');
+    if (vid) {
+      vid.style.cssText += `
+        position: fixed !important;
+        bottom: 20px !important;
+        right: 20px !important;
+        top: auto !important;
+        left: auto !important;
+        width: 140px !important;
+        height: 105px !important;
+        border: 1px solid rgba(0,229,255,0.2) !important;
+        opacity: 0.7 !important;
+        z-index: 150 !important;
+      `;
+    }
+
+    // Small delay then start calibration
+    setTimeout(startCalibration, 1000);
+
+  } catch(e) {
+    setStatus('error', 'KAMERA HATASI');
+    document.getElementById('cal-intro').style.display = 'block';
+    document.getElementById('cal-intro').innerHTML = `
+      <h1 style="color:#ff1744">HATA</h1>
+      <p style="color:rgba(255,100,100,0.8)">Kamera erişimi reddedildi veya kullanılamıyor.<br>Lütfen izinleri kontrol edip tekrar deneyin.</p>
+      <button class="start-btn" onclick="location.reload()">// YENİDEN DENE</button>
+    `;
+  }
+}
+
+// =========================================
+//  CALIBRATION
+// =========================================
+function startCalibration() {
+  setStatus('calibrating', 'KALİBRASYON');
+  calPoints = getCalPoints();
+  calInstr.style.display = 'block';
+  showDot(0);
+}
+
+function showDot(index) {
+  // Remove previous dots
+  calDots.forEach(d => d.remove());
+  calDots = [];
+
+  if (index >= TOTAL_POINTS) {
+    finishCalibration();
+    return;
+  }
+
+  currentDotIndex = index;
+  const [cx, cy] = calPoints[index];
+
+  const dot = document.createElement('div');
+  dot.className = 'cal-dot';
+  dot.style.left = cx + 'px';
+  dot.style.top  = cy + 'px';
+  document.body.appendChild(dot);
+  calDots.push(dot);
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => dot.classList.add('visible'));
+  });
+
+  dot.addEventListener('click', () => onDotClick(dot, index));
+}
+
+function onDotClick(dot, index) {
+  dot.classList.add('clicked');
+  clickedPoints++;
+  calCount.textContent = `${clickedPoints}/${TOTAL_POINTS}`;
+  calBar.style.width = (clickedPoints / TOTAL_POINTS * 100) + '%';
+
+  // WebGazer stores click as calibration sample
+  // (WebGazer automatically learns from user clicks on page)
+
+  setTimeout(() => showDot(index + 1), 400);
+}
+
+function finishCalibration() {
+  isCalibrated = true;
+  calInstr.style.display = 'none';
+
+  const msg = document.getElementById('complete-msg');
+  msg.style.display = 'block';
+  setTimeout(() => msg.style.display = 'none', 2500);
+
+  gazeDot.classList.add('active');
+  setStatus('active', 'TAKİP AKTİF');
+}
+
+// =========================================
+//  GAZE LISTENER + SMOOTHING
+// =========================================
+function onGaze(data, elapsedTime) {
+  if (!data || !isCalibrated) return;
+
+  // Exponential moving average smoothing
+  smoothX = smoothX + ALPHA * (data.x - smoothX);
+  smoothY = smoothY + ALPHA * (data.y - smoothY);
+
+  const x = Math.round(smoothX);
+  const y = Math.round(smoothY);
+
+  // Update dot position
+  gazeDot.style.left = x + 'px';
+  gazeDot.style.top  = y + 'px';
+
+  // Update HUD
+  coordX.textContent = x + ' px';
+  coordY.textContent = y + ' px';
+}
+
+// =========================================
+//  HELPERS
+// =========================================
+function setStatus(state, text) {
+  statusDot.className = '';
+  if (state === 'calibrating') statusDot.classList.add('calibrating');
+  else if (state === 'active')  statusDot.classList.add('active');
+  statusText.textContent = text;
+}
+
+// Recalibrate on window resize
+window.addEventListener('resize', () => {
+  calPoints = getCalPoints();
+});
+
+// Prevent context menu
+document.addEventListener('contextmenu', e => e.preventDefault());
+</script>
+</body>
+  </html>
+  
