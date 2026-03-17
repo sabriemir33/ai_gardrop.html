@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SABRI EMIR | AI EYE ANALYZER</title>
+    <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
+    <style>
+        body { margin: 0; background: #000; color: #00f5ff; font-family: 'Courier New', monospace; overflow: hidden; }
+        #gaze-dot {
+            position: fixed; width: 20px; height: 20px;
+            background: #ff0000; border-radius: 50%;
+            pointer-events: none; z-index: 9999;
+            box-shadow: 0 0 15px #ff0000; display: block !important; /* Zorla göster */
+        }
+        #ai-panel {
+            position: fixed; top: 10px; right: 10px; width: 250px;
+            background: rgba(0, 20, 20, 0.9); border: 2px solid #00f5ff;
+            padding: 15px; border-radius: 10px; z-index: 1000;
+            box-shadow: 0 0 20px rgba(0, 245, 255, 0.3);
+        }
+        .ai-status { color: #0f0; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #333; }
+        #ai-log { font-size: 12px; color: #fff; height: 60px; overflow: hidden; }
+        #target {
+            position: fixed; width: 60px; height: 60px;
+            border: 3px dashed #fff; border-radius: 50%;
+            display: flex; justify-content: center; align-items: center; z-index: 500;
+        }
+    </style>
+</head>
+<body>
+
+<div id="ai-panel">
+    <div class="ai-status">🤖 AI ENGINE: AKTİF</div>
+    <div id="ai-log">Sistem başlatılıyor... Gözlerini ekranda gezdir kanka.</div>
+    <div style="margin-top:10px; font-size: 10px;">X: <span id="x">0</span> | Y: <span id="y">0</span></div>
+</div>
+
+<div id="gaze-dot"></div>
+
+<div id="target" style="top:50%; left:50%;">
+    <div style="width:10px; height:10px; background:#ff0000; border-radius:50%;"></div>
+</div>
+
+<script>
+    const dot = document.getElementById('gaze-dot');
+    const log = document.getElementById('ai-log');
+    const xText = document.getElementById('x');
+    const yText = document.getElementById('y');
+
+    // Yapay Zeka Analiz Motoru
+    function AI_Analysis(x, y) {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        let analysis = "";
+
+        if (x < w/3 && y < h/3) analysis = "AI: Sol üstteki verilere odaklandın. Teknik detayları inceliyorsun.";
+        else if (x > w*0.6 && y < h/3) analysis = "AI: Sağ üstteki AI paneline bakıyorsun. Sistemi kontrol ediyorsun.";
+        else if (x > w/3 && x < w*0.6 && y > h/3 && y < h*0.6) analysis = "AI: Merkeze kilitlendin. Hedef odaklısın.";
+        else analysis = "AI: Ekranı tarıyorsun. Veri toplama devam ediyor...";
+
+        log.innerText = analysis;
+    }
+
+    window.onload = async () => {
+        webgazer.setGazeListener((data, time) => {
+            if (!data) return;
+
+            // Koordinatları güncelle
+            xText.innerText = Math.round(data.x);
+            yText.innerText = Math.round(data.y);
+
+            // Takipçiyi (Noktayı) hareket ettir
+            dot.style.transform = `translate(${data.x}px, ${data.y}px)`;
+            
+            // AI Analizini çalıştır
+            AI_Analysis(data.x, data.y);
+        }).begin();
+
+        // Senin ekran görüntündeki gibi kamerayı sol üstte tut ama noktaları gizleme
+        webgazer.showVideo(true).showPredictionPoints(true);
+    };
+
+    // Bellek temizliği
+    window.onbeforeunload = () => webgazer.end();
+</script>
+</body>
+</html>
